@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat App</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; }
+        .chat-box { max-width: 400px; margin: auto; }
+        .messages { border: 1px solid #ddd; height: 300px; overflow-y: auto; padding: 10px; }
+        .input-box { display: flex; }
+        .input-box input { flex: 1; padding: 10px; }
+        .input-box button { padding: 10px; }
+    </style>
+</head>
+<body>
+    <div class="chat-box">
+        <div class="messages" id="messages"></div>
+        <div class="input-box">
+            <input type="text" id="message" placeholder="Type a message...">
+            <button id="send">Send</button>
+            <button id="skip">Skip</button>
+        </div>
+    </div>
+
+    <script>
+        const socket = io();
+
+        const messages = document.getElementById('messages');
+        const messageInput = document.getElementById('message');
+        const sendButton = document.getElementById('send');
+        const skipButton = document.getElementById('skip');
+
+        let partner = null;
+
+        socket.on('matched', (id) => {
+            partner = id;
+            messages.innerHTML += `<p>You're now chatting with ${id}</p>`;
+        });
+
+        socket.on('message', ({ from, message }) => {
+            messages.innerHTML += `<p><strong>${from}:</strong> ${message}</p>`;
+        });
+
+        sendButton.addEventListener('click', () => {
+            const message = messageInput.value;
+            if (partner && message.trim()) {
+                socket.emit('message', { to: partner, message });
+                messages.innerHTML += `<p><strong>You:</strong> ${message}</p>`;
+                messageInput.value = '';
+            }
+        });
+
+        skipButton.addEventListener('click', () => {
+            socket.emit('skip');
+            messages.innerHTML = '<p>Finding a new partner...</p>';
+        });
+    </script>
+</body>
+</html>
+
