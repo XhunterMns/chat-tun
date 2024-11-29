@@ -93,7 +93,8 @@
             <button id="send">Send</button>
             <button id="skip">Skip</button>
         </div>
-        <div><input class="input-box" id="image-file" type="file" /> </div> 
+        <div><input class="input-box" id="image-file" type="file" />
+        </div>
     </div>
     <div id="chat"></div>
 
@@ -118,7 +119,6 @@ socket.on('userDisconnected', (id) => {
     }
 });
 
-// Listen for the 'userSkipped' event from the server
 socket.on('userSkipped', (id) => {
     if (id) {
         const message = document.createElement('div');
