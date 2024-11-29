@@ -35,9 +35,15 @@ io.on('connection', (socket) => {
         io.to(to).emit('message', { from: socket.id, message });
     });
 
+    // Handle image sharing
+    socket.on('image', ({ to, image }) => {
+        io.to(to).emit('image', { from: socket.id, image });
+    });
+
     // Handle skip
     socket.on('skip', () => {
         users.push(socket.id);
+        io.emit('userSkipped', socket.id); // Emit an event to notify that the user skipped
         if (users.length >= 2) {
             const [user1, user2] = users.splice(0, 2);
             io.to(user1).emit('matched', user2);
@@ -49,10 +55,10 @@ io.on('connection', (socket) => {
     socket.on('disconnect', () => {
         users = users.filter((id) => id !== socket.id);
         console.log('A user disconnected:', socket.id);
+        io.emit('userDisconnected', socket.id); // Emit an event to notify that the user disconnected
     });
 });
 
 server.listen(3000, () => {
     console.log('Server running on http://localhost:3000');
 });
-
