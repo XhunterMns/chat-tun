@@ -16,6 +16,7 @@ app.get('/', (req, res) => {
 });
 
 let users = []; // Store active users
+let pairs = {}; // Store matched user pairs
 
 io.on('connection', (socket) => {
     console.log('A user connected:', socket.id);
@@ -26,6 +27,8 @@ io.on('connection', (socket) => {
     // Match users when someone connects
     if (users.length >= 2) {
         const [user1, user2] = users.splice(0, 2);
+        pairs[user1] = user2;  // Store the pair of users
+        pairs[user2] = user1;
         io.to(user1).emit('matched', user2);
         io.to(user2).emit('matched', user1);
     }
@@ -42,10 +45,23 @@ io.on('connection', (socket) => {
 
     // Handle skip
     socket.on('skip', () => {
+        const partner = pairs[socket.id];
+        if (partner) {
+            // Emit skip message to both the users
+            io.to(socket.id).emit('userSkipped', socket.id);  // Notify the user who skipped
+            io.to(partner).emit('userSkipped', socket.id);  // Notify the partner about the skip
+        }
+
+        // Remove the pair and add the user back to the pool
+        delete pairs[socket.id];
+        delete pairs[partner];
         users.push(socket.id);
-        io.emit('userSkipped', socket.id); // Emit an event to notify that the user skipped
+
+        // Match new users if possible
         if (users.length >= 2) {
             const [user1, user2] = users.splice(0, 2);
+            pairs[user1] = user2;
+            pairs[user2] = user1;
             io.to(user1).emit('matched', user2);
             io.to(user2).emit('matched', user1);
         }
@@ -53,9 +69,17 @@ io.on('connection', (socket) => {
 
     // Handle disconnection
     socket.on('disconnect', () => {
+        const partner = pairs[socket.id];
+
+        if (partner) {
+            // Emit disconnection message to the partner only
+            io.to(partner).emit('userDisconnected', socket.id); // Notify the other user about the disconnection
+        }
+
+        // Remove the user from the pool and pair mapping
         users = users.filter((id) => id !== socket.id);
+        delete pairs[socket.id];
         console.log('A user disconnected:', socket.id);
-        io.emit('userDisconnected', socket.id); // Emit an event to notify that the user disconnected
     });
 });
 
