@@ -6,7 +6,7 @@
     <title>Chat App</title>
     <script src="/socket.io/socket.io.js"></script>
     <style>
-       body {
+        body {
         font-family: Arial, sans-serif;
         background: linear-gradient(to right, #243594, #030457);
         margin: 0;
@@ -77,9 +77,15 @@
         color: #ff9f1c;
         font-weight: bold;
     }
+    .topleft {
+  position: absolute;
+  top: 8px;
+  left: 16px;
+}
     </style>
 </head>
 <body>
+    <a class="topleft" href="https://imgbb.com/"><img src="https://i.ibb.co/QDgtkqZ/logo-of-chat-website-named-chat-tun-with-removebg-preview.png" alt="logo-of-chat-website-named-chat-tun-with-removebg-preview" width="70px" height="70px" ></a>
     <div class="chat-box">
         <div class="messages" id="messages"></div>
         <div class="input-box">
@@ -87,41 +93,105 @@
             <button id="send">Send</button>
             <button id="skip">Skip</button>
         </div>
+        <div><input class="input-box" id="image-file" type="file" />
+        </div>
     </div>
+    <div id="chat"></div>
 
     <script>
-        const socket = io();
+const socket = io(); // Establish a connection to the server
+const messages = document.getElementById('messages'); // Get the messages container
+const messageInput = document.getElementById('message'); // Get the message input field
+const sendButton = document.getElementById('send'); // Get the send button
+const skipButton = document.getElementById('skip'); // Get the skip button
+const imageInput = document.getElementById('image-file'); // Get the image file input
 
-        const messages = document.getElementById('messages');
-        const messageInput = document.getElementById('message');
-        const sendButton = document.getElementById('send');
-        const skipButton = document.getElementById('skip');
+let partner = null; // Variable to store the current chat partner
 
-        let partner = null;
+// Listen for the 'userDisconnected' event from the server
+socket.on('userDisconnected', (id) => {
+    if (id) {
+        const message = document.createElement('div');
+        message.className = 'message disconnect';
+        message.textContent = `User ${id} disconnected.`;
+        messages.appendChild(message);
+        setTimeout(() => message.remove(), 10000);
+    }
+});
 
-        socket.on('matched', (id) => {
-            partner = id;
-            messages.innerHTML += `<p>You're now chatting with ${id}</p>`;
-        });
+// Listen for the 'userSkipped' event from the server
+socket.on('userSkipped', (id) => {
+    if (id) {
+        const message = document.createElement('div');
+        message.className = 'message skip';
+        message.textContent = `User ${id} skipped.`;
+        messages.appendChild(message);
+        setTimeout(() => message.remove(), 5000);
+    }
+});
 
-        socket.on('message', ({ from, message }) => {
-            messages.innerHTML += `<p><strong>${from}:</strong> ${message}</p>`;
-        });
+// Listen for the 'matched' event from the server
+socket.on('matched', (id) => {
+    partner = id;
+    messages.innerHTML += `<p>You're now chatting with ${id}</p>`;
+});
 
-        sendButton.addEventListener('click', () => {
-            const message = messageInput.value;
-            if (partner && message.trim()) {
-                socket.emit('message', { to: partner, message });
-                messages.innerHTML += `<p><strong>You:</strong> ${message}</p>`;
-                messageInput.value = '';
-            }
-        });
+// Listen for text messages from the server
+socket.on('message', ({ from, message }) => {
+    messages.innerHTML += `<p><strong>${from}:</strong> ${message}</p>`;
+    messages.scrollTop = messages.scrollHeight;
+});
 
-        skipButton.addEventListener('click', () => {
-            socket.emit('skip');
-            messages.innerHTML = '<p>Finding a new partner...</p>';
-        });
+// Listen for image messages from the server
+// Listen for image messages from the server
+socket.on('image', ({ from, image }) => {
+    const img = document.createElement('img');
+    img.src = image; // Set the image source to the Base64 image string
+    img.alt = `Image from ${from}`;
+    img.style.maxWidth = '100%';
+    img.style.marginTop = '5px';
+
+    const messageElement = document.createElement('p');
+    messageElement.innerHTML = `<strong>${from}:</strong>`;
+    messageElement.appendChild(img);
+
+    messages.appendChild(messageElement);
+    messages.scrollTop = messages.scrollHeight;
+});
+
+// Send a message or image when the send button is clicked
+sendButton.addEventListener('click', () => {
+    const textMessage = messageInput.value.trim();
+    const file = imageInput.files[0];
+
+    // Handle text message sending
+    if (textMessage && partner) {
+        socket.emit('message', { to: partner, message: textMessage });
+        messages.innerHTML += `<p><strong>You:</strong> ${textMessage}</p>`;
+        messageInput.value = ''; // Clear the input
+    }
+
+    // Handle image sending
+    if (file && partner) {
+        const reader = new FileReader();
+        reader.onload = () => {
+            const base64Image = reader.result;
+            socket.emit('image', { to: partner, image: base64Image });
+            messages.innerHTML += `<p><strong>You:</strong> <img src="${base64Image}" style="max-width:40%;"></p>`;
+        };
+        reader.readAsDataURL(file);
+        imageInput.value = ''; // Clear the file input
+    }
+
+    messages.scrollTop = messages.scrollHeight;
+});
+
+// Handle skip button functionality
+skipButton.addEventListener('click', () => {
+    socket.emit('skip');
+    messages.innerHTML = '<p>Finding a new partner...</p>';
+});
+
     </script>
 </body>
 </html>
-
