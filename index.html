@@ -6,12 +6,77 @@
     <title>Chat App</title>
     <script src="/socket.io/socket.io.js"></script>
     <style>
-       body { font-family: Arial, sans-serif; background-color: antiquewhite; }
-        .chat-box { max-width: auto; margin: auto; }
-        .messages { border: 1px solid #ddd; height: 500px; overflow-y: auto; padding: 10px; }
-        .input-box { display: flex; }
-        .input-box input { flex: 1; padding: 10px; }
-        .input-box button { padding: 10px; }
+       body {
+        font-family: Arial, sans-serif;
+        background: linear-gradient(to right, #243594, #030457);
+        margin: 0;
+        padding: 0;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 100vh;
+        color: #333;
+    }
+    .chat-box {
+        background-color: #fff;
+        border-radius: 10px;
+        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+        overflow: hidden;
+        max-width: 800px;
+        max-height: fit-content;
+        width: 100%;
+    }
+    .messages {
+        border-bottom: 1px solid #ddd;
+        height: 400px;
+        overflow-y: auto;
+        padding: 10px;
+        background-color: #f9f9f9;
+    }
+    .messages p {
+        margin: 5px 0;
+    }
+    .messages p strong {
+        color: #0078d7;
+    }
+    .input-box {
+        display: flex;
+        padding: 10px;
+        background-color: #f0f0f0;
+    }
+    .input-box input {
+        flex: 1;
+        padding: 10px;
+        font-size: 16px;
+        border: 1px solid #ddd;
+        border-radius: 5px;
+        margin-right: 10px;
+    }
+    .input-box input:focus {
+        outline: none;
+        border-color: #0078d7;
+    }
+    .input-box button {
+        padding: 10px 20px;
+        font-size: 16px;
+        background-color: #0078d7;
+        color: white;
+        border: none;
+        border-radius: 5px;
+        cursor: pointer;
+        transition: background-color 0.3s;
+    }
+    .input-box button:hover {
+        background-color: #005bb5;
+    }
+    .message.disconnect {
+        color: #ff4f4f;
+        font-weight: bold;
+    }
+    .message.skip {
+        color: #ff9f1c;
+        font-weight: bold;
+    }
     </style>
 </head>
 <body>
