@@ -7,190 +7,211 @@
     <script src="/socket.io/socket.io.js"></script>
     <style>
         body {
-        font-family: Arial, sans-serif;
-        background: linear-gradient(to right, #243594, #030457);
-        margin: 0;
-        padding: 0;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        height: 100vh;
-        color: #333;
-    }
-    .chat-box {
-        background-color: #fff;
-        border-radius: 10px;
-        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
-        overflow: hidden;
-        max-width: 800px;
-        max-height: fit-content;
-        width: 100%;
-    }
-    .messages {
-        border-bottom: 1px solid #ddd;
-        height: 400px;
-        overflow-y: auto;
-        padding: 10px;
-        background-color: #f9f9f9;
-    }
-    .messages p {
-        margin: 5px 0;
-    }
-    .messages p strong {
-        color: #0078d7;
-    }
-    .input-box {
-        display: flex;
-        padding: 10px;
-        background-color: #f0f0f0;
-    }
-    .input-box input {
-        flex: 1;
-        padding: 10px;
-        font-size: 16px;
-        border: 1px solid #ddd;
-        border-radius: 5px;
-        margin-right: 10px;
-    }
-    .input-box input:focus {
-        outline: none;
-        border-color: #0078d7;
-    }
-    .input-box button {
-        padding: 10px 20px;
-        font-size: 16px;
-        background-color: #0078d7;
-        color: white;
-        border: none;
-        border-radius: 5px;
-        cursor: pointer;
-        transition: background-color 0.3s;
-    }
-    .input-box button:hover {
-        background-color: #005bb5;
-    }
-    .message.disconnect {
-        color: #ff4f4f;
-        font-weight: bold;
-    }
-    .message.skip {
-        color: #ff9f1c;
-        font-weight: bold;
-    }
-    .topleft {
-  position: absolute;
-  top: 8px;
-  left: 16px;
-}
+            font-family: Arial, sans-serif;
+            background: linear-gradient(to right, #243594, #030457);
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            color: #333;
+        }
+        .chat-box {
+            background-color: #fff;
+            border-radius: 10px;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+            max-width: 800px;
+            width: 100%;
+            display: none;
+        }
+        .messages {
+            border-bottom: 1px solid #ddd;
+            height: 400px;
+            overflow-y: auto;
+            padding: 10px;
+            background-color: #f9f9f9;
+        }
+        .messages p {
+            margin: 5px 0;
+        }
+        .messages p strong {
+            color: #0078d7;
+        }
+        .input-box {
+            display: flex;
+            padding: 10px;
+            background-color: #f0f0f0;
+        }
+        .input-box input {
+            flex: 1;
+            padding: 10px;
+            font-size: 16px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            margin-right: 10px;
+        }
+        .input-box input:focus {
+            outline: none;
+            border-color: #0078d7;
+        }
+        .input-box button {
+            padding: 10px 20px;
+            font-size: 16px;
+            background-color: #0078d7;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        .input-box button:hover {
+            background-color: #005bb5;
+        }
+        .username-modal {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+        .username-modal input {
+            padding: 10px;
+            margin-bottom: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            width: 100%;
+            font-size: 16px;
+        }
+        .username-modal button {
+            padding: 10px 20px;
+            font-size: 16px;
+            background-color: #0078d7;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        .username-modal button:hover {
+            background-color: #005bb5;
+        }
     </style>
 </head>
 <body>
-    <a class="topleft" href="https://imgbb.com/"><img src="https://i.ibb.co/QDgtkqZ/logo-of-chat-website-named-chat-tun-with-removebg-preview.png" alt="logo-of-chat-website-named-chat-tun-with-removebg-preview" width="70px" height="70px" ></a>
-    <div class="chat-box">
+    <div class="username-modal" id="username-modal">
+        <h2>Enter your username</h2>
+        <input type="text" id="username-input" placeholder="Your username">
+        <button id="start-chat">Start Chat</button>
+    </div>
+
+    <div class="chat-box" id="chat-box">
         <div class="messages" id="messages"></div>
         <div class="input-box">
             <input type="text" id="message" placeholder="Type a message...">
             <button id="send">Send</button>
             <button id="skip">Skip</button>
         </div>
-        <div><input class="input-box" id="image-file" type="file" />
+        <div>
+            <input class="input-box" id="image-file" type="file" />
         </div>
     </div>
-    <div id="chat"></div>
 
     <script>
-const socket = io(); // Establish a connection to the server
-const messages = document.getElementById('messages'); // Get the messages container
-const messageInput = document.getElementById('message'); // Get the message input field
-const sendButton = document.getElementById('send'); // Get the send button
-const skipButton = document.getElementById('skip'); // Get the skip button
-const imageInput = document.getElementById('image-file'); // Get the image file input
+        const socket = io();
+        const messages = document.getElementById('messages');
+        const messageInput = document.getElementById('message');
+        const sendButton = document.getElementById('send');
+        const skipButton = document.getElementById('skip');
+        const imageInput = document.getElementById('image-file');
+        const usernameModal = document.getElementById('username-modal');
+        const usernameInput = document.getElementById('username-input');
+        const startChatButton = document.getElementById('start-chat');
+        const chatBox = document.getElementById('chat-box');
 
-let partner = null; // Variable to store the current chat partner
+        let partner = null;
+        let username = null;
 
-// Listen for the 'userDisconnected' event from the server
-socket.on('userDisconnected', (id) => {
-    if (id) {
-        const message = document.createElement('div');
-        message.className = 'message disconnect';
-        message.textContent = `User ${id} disconnected.`;
-        messages.appendChild(message);
-        setTimeout(() => message.remove(), 10000);
-    }
-});
+        // Handle username submission
+        startChatButton.addEventListener('click', () => {
+            username = usernameInput.value.trim();
+            if (!username) {
+                alert("Username cannot be empty!");
+                return;
+            }
+            usernameModal.style.display = 'none';
+            chatBox.style.display = 'block';
+            socket.emit('setUsername', username);
+        });
 
-socket.on('userSkipped', (id) => {
-    if (id) {
-        const message = document.createElement('div');
-        message.className = 'message skip';
-        message.textContent = `User ${id} skipped.`;
-        messages.appendChild(message);
-        setTimeout(() => message.remove(), 5000);
-    }
-});
+        socket.on('matched', (partnerName) => {
+            partner = partnerName;
+            messages.innerHTML += `<p>You're now chatting with <strong>${partnerName}</strong>.</p>`;
+        });
 
-// Listen for the 'matched' event from the server
-socket.on('matched', (id) => {
-    partner = id;
-    messages.innerHTML += `<p>You're now chatting with ${id}</p>`;
-});
+        socket.on('message', ({ from, message }) => {
+            messages.innerHTML += `<p><strong>${from}:</strong> ${message}</p>`;
+            messages.scrollTop = messages.scrollHeight;
+        });
 
-// Listen for text messages from the server
-socket.on('message', ({ from, message }) => {
-    messages.innerHTML += `<p><strong>${from}:</strong> ${message}</p>`;
-    messages.scrollTop = messages.scrollHeight;
-});
+        socket.on('image', ({ from, image }) => {
+            const img = document.createElement('img');
+            img.src = image;
+            img.alt = `Image from ${from}`;
+            img.style.maxWidth = '100%';
+            img.style.marginTop = '5px';
 
-// Listen for image messages from the server
-// Listen for image messages from the server
-socket.on('image', ({ from, image }) => {
-    const img = document.createElement('img');
-    img.src = image; // Set the image source to the Base64 image string
-    img.alt = `Image from ${from}`;
-    img.style.maxWidth = '100%';
-    img.style.marginTop = '5px';
+            const messageElement = document.createElement('p');
+            messageElement.innerHTML = `<strong>${from}:</strong>`;
+            messageElement.appendChild(img);
 
-    const messageElement = document.createElement('p');
-    messageElement.innerHTML = `<strong>${from}:</strong>`;
-    messageElement.appendChild(img);
+            messages.appendChild(messageElement);
+            messages.scrollTop = messages.scrollHeight;
+        });
 
-    messages.appendChild(messageElement);
-    messages.scrollTop = messages.scrollHeight;
-});
+        sendButton.addEventListener('click', () => {
+            const textMessage = messageInput.value.trim();
+            const file = imageInput.files[0];
 
-// Send a message or image when the send button is clicked
-sendButton.addEventListener('click', () => {
-    const textMessage = messageInput.value.trim();
-    const file = imageInput.files[0];
+            if (textMessage && partner) {
+                socket.emit('message', { to: partner, message: textMessage });
+                messages.innerHTML += `<p><strong>You:</strong> ${textMessage}</p>`;
+                messageInput.value = '';
+            }
 
-    // Handle text message sending
-    if (textMessage && partner) {
-        socket.emit('message', { to: partner, message: textMessage });
-        messages.innerHTML += `<p><strong>You:</strong> ${textMessage}</p>`;
-        messageInput.value = ''; // Clear the input
-    }
+            if (file && partner) {
+                const reader = new FileReader();
+                reader.onload = () => {
+                    const base64Image = reader.result;
+                    socket.emit('image', { to: partner, image: base64Image });
+                    messages.innerHTML += `<p><strong>You:</strong> <img src="${base64Image}" style="max-width:40%;"></p>`;
+                };
+                reader.readAsDataURL(file);
+                imageInput.value = '';
+            }
 
-    // Handle image sending
-    if (file && partner) {
-        const reader = new FileReader();
-        reader.onload = () => {
-            const base64Image = reader.result;
-            socket.emit('image', { to: partner, image: base64Image });
-            messages.innerHTML += `<p><strong>You:</strong> <img src="${base64Image}" style="max-width:40%;"></p>`;
-        };
-        reader.readAsDataURL(file);
-        imageInput.value = ''; // Clear the file input
-    }
+            messages.scrollTop = messages.scrollHeight;
+        });
 
-    messages.scrollTop = messages.scrollHeight;
-});
+        skipButton.addEventListener('click', () => {
+            socket.emit('skip');
+            messages.innerHTML = '<p>Finding a new partner...</p>';
+        });
 
-// Handle skip button functionality
-skipButton.addEventListener('click', () => {
-    socket.emit('skip');
-    messages.innerHTML = '<p>Finding a new partner...</p>';
-});
+        socket.on('userSkipped', (skipper) => {
+            messages.innerHTML += `<p><strong>${skipper}</strong> skipped the chat.</p>`;
+        });
 
+        socket.on('userDisconnected', (username) => {
+            messages.innerHTML += `<p><strong>${username}</strong> disconnected.</p>`;
+        });
     </script>
 </body>
 </html>
