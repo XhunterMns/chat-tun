@@ -28,8 +28,8 @@ io.on('connection', (socket) => {
             const [user1, user2] = users.splice(0, 2);
             pairs[user1] = user2;
             pairs[user2] = user1;
-            io.to(user1).emit('matched', usernames[user2]);
-            io.to(user2).emit('matched', usernames[user1]);
+            io.to(user1).emit('matched', { partnerSocketId: user2, partnerUsername: usernames[user2] });
+            io.to(user2).emit('matched', { partnerSocketId: user1, partnerUsername: usernames[user1] });
         }
     });
 
@@ -54,8 +54,8 @@ io.on('connection', (socket) => {
             const [user1, user2] = users.splice(0, 2);
             pairs[user1] = user2;
             pairs[user2] = user1;
-            io.to(user1).emit('matched', usernames[user2]);
-            io.to(user2).emit('matched', usernames[user1]);
+            io.to(user1).emit('matched', { partnerSocketId: user2, partnerUsername: usernames[user2] });
+            io.to(user2).emit('matched', { partnerSocketId: user1, partnerUsername: usernames[user1] });
         }
     });
 
@@ -64,10 +64,9 @@ io.on('connection', (socket) => {
         if (partner) {
             io.to(partner).emit('userDisconnected', usernames[socket.id]);
         }
-        users = users.filter((id) => id !== socket.id);
-        delete pairs[socket.id];
         delete usernames[socket.id];
-        console.log('A user disconnected:', socket.id);
+        users = users.filter(id => id !== socket.id);
+        delete pairs[socket.id];
     });
 });
 
