@@ -126,10 +126,14 @@
             messages.innerHTML += `<p>You're now chatting with <strong>${partnerUsername}</strong>.</p>`;
         });
 
+ const notificationSound = new Audio('https://bigsoundbank.com/UPLOAD/mp3/3261.mp3');
+
         socket.on('message', ({ from, message }) => {
             messages.innerHTML += `<p><strong>${from}:</strong> ${message}</p>`;
             messages.scrollTop = messages.scrollHeight;
+             notificationSound.play()
         });
+
 
         socket.on('image', ({ from, image }) => {
             const img = document.createElement('img');
