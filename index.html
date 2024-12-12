@@ -79,10 +79,16 @@
 </head>
 <body>
     <div class="input-box" id="username-form">
-        <h2>enter your username</h2>
-        <h4>bel 3arbi ekteb esmk</h4>
-        <input type="text" id="username" placeholder="Enter your username">
-        <button id="start-chat">Start Chat</button>
+        <h2>enter your username</h2><br>
+        <h4>ekteb esmk</h4><br>
+        <input type="text" id="username" placeholder="Enter your username"><br>
+        <button id="start-chat">Start Chat</button><br>
+        <select id="gender"><br>
+            <br>
+            <option value="m">male</option>
+            <option value="f">female</option>
+        </select>
+        <div id="user-count">Users online: 0</div>
     </div>
     <div class="chat-box">
         <div class="messages" id="messages"></div>
@@ -90,6 +96,7 @@
             <input type="text" id="message" placeholder="Type a message...">
             <button id="send">Send</button>
             <button id="skip">Skip</button>
+            <button id="back">back</button>
         </div>
         <input class="input-box" id="image-file" type="file">
     </div>
@@ -109,12 +116,28 @@
         let partnerSocketId = null;
         let partnerUsername = '';
 
+        const userCountElement = document.getElementById('user-count');
+
+        socket.on('updateUserCount', (count) => {
+            userCountElement.textContent = `Users online: ${count}`;
+        });
+
         startChatButton.addEventListener('click', () => {
             const username = usernameInput.value.trim();
+            const gender = document.getElementById('gender').value;
+
             if (username) {
                 socket.emit('setUsername', username);
+
+                // Change the username display based on gender
+                let coloredUsername = `<span style="color: ${gender === 'f' ? 'red' : 'blue'};">${username}</span>`;
+                
+                // Hide the form and show the chat box
                 usernameForm.style.display = 'none';
                 chatBox.style.display = 'block';
+
+                // Display the username with color
+                messages.innerHTML += `<p>Welcome, ${coloredUsername}!</p>`;
             } else {
                 alert('Please enter a username!');
             }
@@ -126,14 +149,13 @@
             messages.innerHTML += `<p>You're now chatting with <strong>${partnerUsername}</strong>.</p>`;
         });
 
- const notificationSound = new Audio('https://bigsoundbank.com/UPLOAD/mp3/3261.mp3');
+        const notificationSound = new Audio('https://bigsoundbank.com/UPLOAD/mp3/3261.mp3');
 
         socket.on('message', ({ from, message }) => {
             messages.innerHTML += `<p><strong>${from}:</strong> ${message}</p>`;
             messages.scrollTop = messages.scrollHeight;
-             notificationSound.play()
+            notificationSound.play();
         });
-
 
         socket.on('image', ({ from, image }) => {
             const img = document.createElement('img');
@@ -182,7 +204,9 @@
 
             messages.scrollTop = messages.scrollHeight;
         });
-
+        document.getElementById('back').addEventListener('click', function() {
+            location.reload();
+        });
         skipButton.addEventListener('click', () => {
             socket.emit('skip');
             messages.innerHTML = '<p>Finding a new partner...</p>';
