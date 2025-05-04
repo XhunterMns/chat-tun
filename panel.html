@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Chat Server Admin Panel</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; padding: 20px; }
+        .dashboard { display: grid; grid-template-columns: 1fr 2fr; gap: 20px; }
+        .card { background: #f5f5f5; border-radius: 8px; padding: 15px; margin-bottom: 15px; }
+        #logs { height: 500px; overflow-y: auto; background: #333; color: #fff; padding: 10px; }
+        .log-entry { margin-bottom: 5px; font-family: monospace; }
+        .user-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
+        .user-card { background: #e3f2fd; padding: 10px; border-radius: 4px; }
+    </style>
+</head>
+<body>
+    <h1>Chat Server Admin Panel</h1>
+    
+    <div class="dashboard">
+        <div>
+            <div class="card">
+                <h2>Statistics</h2>
+                <div id="stats">
+                    <p>Connected Users: <span id="userCount">0</span></p>
+                </div>
+            </div>
+            
+            <div class="card">
+                <h2>Active Users</h2>
+                <div id="users" class="user-list"></div>
+            </div>
+        </div>
+        
+        <div class="card">
+            <h2>Activity Log</h2>
+            <div id="logs"></div>
+        </div>
+    </div>
+
+    <script>
+        const ws = new WebSocket(`ws://${window.location.hostname}:3001`);
+        
+        ws.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            
+            if (data.type === 'init') {
+                // Initial load
+                document.getElementById('userCount').textContent = data.users.length;
+                renderUsers(data.users);
+                renderLogs(data.logs);
+            } else if (data.type === 'update') {
+                // Real-time update
+                document.getElementById('userCount').textContent = data.userCount;
+                renderUsers(data.users);
+                if (data.newLogs) {
+                    addLog(data.newLogs);
+                }
+            }
+        };
+        
+        function renderUsers(users) {
+            const container = document.getElementById('users');
+            container.innerHTML = users.map(user => `
+                <div class="user-card">
+                    <strong>${user.username || 'Anonymous'}</strong><br>
+                    <small>ID: ${user.socketId}</small><br>
+                    <small>IP: ${user.ip}</small><br>
+                    <small>Connected: ${user.connectedAt}</small>
+                </div>
+            `).join('');
+        }
+        
+        function renderLogs(logs) {
+            const container = document.getElementById('logs');
+            container.innerHTML = logs.map(formatLog).join('');
+            container.scrollTop = container.scrollHeight;
+        }
+        
+        function addLog(log) {
+            const container = document.getElementById('logs');
+            container.innerHTML += formatLog(log);
+            container.scrollTop = container.scrollHeight;
+        }
+        
+        function formatLog(log) {
+            let color = '#fff';
+            if (log.event === 'connect') color = '#4CAF50';
+            if (log.event === 'disconnect') color = '#F44336';
+            if (log.event === 'message') color = '#2196F3';
+            
+            return `<div class="log-entry" style="color: ${color}">
+                [${log.timestamp}] ${log.event.toUpperCase()}: 
+                ${log.username ? log.username + ' ' : ''}
+                (${log.socketId}) 
+                ${log.message ? '- ' + log.message : ''}
+                ${log.duration ? '- Duration: ' + log.duration + 's' : ''}
+            </div>`;
+        }
+    </script>
+</body>
+</html>
