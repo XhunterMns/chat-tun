@@ -1,80 +1,80 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Admin Panel</title>
-  <style>
-    body { font-family: Arial, sans-serif; margin: 0; padding: 16px; background:#f4f6fb }
-    h1 { margin-top: 0 }
-    .grid { display:flex; gap:16px }
-    .card { background:white; padding:12px; border-radius:8px; box-shadow:0 1px 4px rgba(0,0,0,0.08); flex:1 }
-    #logs { height:400px; overflow:auto; font-family:monospace; white-space:pre-wrap; }
-    .user { padding:8px; border-bottom:1px solid #eee }
-    .user strong { color:#0b63d6 }
-  </style>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Admin Panel</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; padding: 16px; background:#f4f6fb }
+        h1 { margin-top: 0 }
+        .grid { display:flex; gap:16px }
+        .card { background:white; padding:12px; border-radius:8px; box-shadow:0 1px 4px rgba(0,0,0,0.08); flex:1 }
+        #logs { height:400px; overflow:auto; font-family:monospace; white-space:pre-wrap; }
+        .user { padding:8px; border-bottom:1px solid #eee }
+        .user strong { color:#0b63d6 }
+    </style>
 </head>
 <body>
-  <h1>Chat - Admin Panel</h1>
-  <div class="grid">
-    <div class="card" style="flex:0.6">
-      <h3>Active Users (<span id="count">0</span>)</h3>
-      <div id="users"></div>
-    </div>
-    <div class="card" style="flex:1.4">
-      <h3>Activity Log</h3>
-      <div id="logs"></div>
-    </div>
-  </div>
-
-  <script>
-    const wsProto = (location.protocol === 'https:') ? 'wss://' : 'ws://';
-    const url = wsProto + location.host + '/admin-ws';
-    const ws = new WebSocket(url);
-
-    const usersEl = document.getElementById('users');
-    const logsEl = document.getElementById('logs');
-    const countEl = document.getElementById('count');
-
-    function renderUsers(list) {
-      usersEl.innerHTML = list.map(u => `
-        <div class="user">
-          <strong>${u.username || 'Anonymous'}</strong><br>
-          <small>ID: ${u.socketId}</small><br>
-          <small>IP: ${u.ip || 'unknown'}</small><br>
-          <small>Connected: ${u.connectedAt}</small>
+    <h1>Chat - Admin Panel</h1>
+    <div class="grid">
+        <div class="card" style="flex:0.6">
+            <h3>Active Users (<span id="count">0</span>)</h3>
+            <div id="users"></div>
         </div>
-      `).join('');
-      countEl.textContent = list.length;
-    }
+        <div class="card" style="flex:1.4">
+            <h3>Activity Log</h3>
+            <div id="logs"></div>
+        </div>
+    </div>
 
-    function addLog(line) {
-      const time = new Date().toLocaleTimeString();
-      logsEl.innerText += `[${time}] ${line}\n`;
-      logsEl.scrollTop = logsEl.scrollHeight;
-    }
+    <script>
+        const wsProto = (location.protocol === 'https:') ? 'wss://' : 'ws://';
+        const url = wsProto + location.host + '/admin-ws';
+        const ws = new WebSocket(url);
 
-    ws.onopen = () => addLog('Admin WS connected');
-    ws.onclose = () => addLog('Admin WS disconnected');
-    ws.onerror = (e) => addLog('Admin WS error');
+        const usersEl = document.getElementById('users');
+        const logsEl = document.getElementById('logs');
+        const countEl = document.getElementById('count');
 
-    ws.onmessage = (ev) => {
-      try {
-        const data = JSON.parse(ev.data);
-        if (data.type === 'init') {
-          renderUsers(data.users || []);
-          (data.logs || []).forEach(l => addLog(JSON.stringify(l)));
-        } else if (data.type === 'update') {
-          if (data.users) renderUsers(data.users);
-          if (data.newLogs) data.newLogs.forEach(l => addLog(JSON.stringify(l)));
-        } else if (data.type === 'log') {
-          addLog(JSON.stringify(data.payload));
+        function renderUsers(list) {
+            usersEl.innerHTML = (list||[]).map(u => `
+                <div class="user">
+                    <strong>${u.username || 'Anonymous'}</strong><br>
+                    <small>ID: ${u.socketId}</small><br>
+                    <small>IP: ${u.ip || 'unknown'}</small><br>
+                    <small>Connected: ${u.connectedAt}</small>
+                </div>
+            `).join('');
+            countEl.textContent = (list||[]).length;
         }
-      } catch (err) {
-        addLog('Invalid admin message');
-      }
-    };
-  </script>
+
+        function addLog(line) {
+            const time = new Date().toLocaleTimeString();
+            logsEl.innerText += `[${time}] ${line}\n`;
+            logsEl.scrollTop = logsEl.scrollHeight;
+        }
+
+        ws.onopen = () => addLog('Admin WS connected');
+        ws.onclose = () => addLog('Admin WS disconnected');
+        ws.onerror = (e) => addLog('Admin WS error');
+
+        ws.onmessage = (ev) => {
+            try {
+                const data = JSON.parse(ev.data);
+                if (data.type === 'init') {
+                    renderUsers(data.users || []);
+                    (data.logs || []).forEach(l => addLog(JSON.stringify(l)));
+                } else if (data.type === 'update') {
+                    if (data.users) renderUsers(data.users);
+                    if (data.newLogs) data.newLogs.forEach(l => addLog(JSON.stringify(l)));
+                } else if (data.type === 'log') {
+                    addLog(JSON.stringify(data.payload));
+                }
+            } catch (err) {
+                addLog('Invalid admin message');
+            }
+        };
+    </script>
 </body>
 
 

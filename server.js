@@ -8,16 +8,6 @@ const { Server } = require('socket.io');
 
 // Import the `path` module to work with file and directory paths
 const path = require('path');
-const express = require('express');
-
-// Import Node.js's HTTP module to create the server
-const http = require('http');
-
-// Import the Socket.IO library to enable real-time, bidirectional communication
-const { Server } = require('socket.io');
-
-// Import the `path` module to work with file and directory paths
-const path = require('path');
 
 // Create an instance of an Express application
 const app = express();
@@ -48,6 +38,26 @@ let usernames = {};
 // Initialize a counter to track the total number of connected users
 let userCount = 0;
 
+// Helper: safe emit if socket exists
+function safeEmit(to, event, payload) {
+    try {
+        if (io.sockets.sockets.get(to)) {
+            io.to(to).emit(event, payload);
+        }
+    } catch (e) {
+        console.warn('safeEmit failed', e && e.message);
+    }
+}
+
+// Try to load the admin panel logger (optional)
+let panel;
+try {
+    panel = require('./panel');
+} catch (e) {
+    // panel is optional; continue without admin logging
+    panel = null;
+}
+
 // Set up a connection event listener for new clients
 io.on('connection', (socket) => {
     // Increment the total user count when a new user connects
@@ -62,12 +72,12 @@ io.on('connection', (socket) => {
     // Listen for a "setUsername" event from the client to set a username
     socket.on('setUsername', (username) => {
         // Store the username associated with the socket ID
-        usernames[socket.id] = username;
+        usernames[socket.id] = username || 'Anonymous';
 
-        // Add the user's socket ID to the list of unpaired users
-        users.push(socket.id);
+        // Add the user's socket ID to the list of unpaired users (avoid duplicates)
+        if (!users.includes(socket.id)) users.push(socket.id);
 
-        // If there are at least two users available, pair them
+    // If there are at least two users available, pair them
         if (users.length >= 2) {
             // Remove two users from the queue
             const [user1, user2] = users.splice(0, 2);
@@ -77,21 +87,40 @@ io.on('connection', (socket) => {
             pairs[user2] = user1;
 
             // Notify both users that they have been paired
-            io.to(user1).emit('matched', { partnerSocketId: user2, partnerUsername: usernames[user2] });
-            io.to(user2).emit('matched', { partnerSocketId: user1, partnerUsername: usernames[user1] });
+            safeEmit(user1, 'matched', { partnerSocketId: user2, partnerUsername: usernames[user2] || 'Anonymous' });
+            safeEmit(user2, 'matched', { partnerSocketId: user1, partnerUsername: usernames[user1] || 'Anonymous' });
+        }
+
+        // Notify admin panel of new connection (if panel available)
+        try {
+            if (panel && typeof panel.logConnection === 'function') {
+                const ip = socket.handshake && (socket.handshake.address || (socket.request && socket.request.connection && socket.request.connection.remoteAddress)) || '';
+                panel.logConnection(socket.id, usernames[socket.id], ip);
+            }
+        } catch (err) {
+            console.warn('panel.logConnection failed', err && err.message);
         }
     });
 
     // Listen for a "message" event and forward it to the intended recipient
     socket.on('message', ({ to, message }) => {
         // Send the message to the recipient with the sender's username
-        io.to(to).emit('message', { from: usernames[socket.id], message });
+        safeEmit(to, 'message', { from: usernames[socket.id] || 'Anonymous', message });
+
+        // Log message to admin panel
+        try {
+            if (panel && typeof panel.logMessage === 'function') {
+                panel.logMessage(usernames[socket.id] || 'Anonymous', to, message);
+            }
+        } catch (err) {
+            console.warn('panel.logMessage failed', err && err.message);
+        }
     });
 
     // Listen for an "image" event and forward it to the intended recipient
     socket.on('image', ({ to, image }) => {
         // Send the image to the recipient with the sender's username
-        io.to(to).emit('image', { from: usernames[socket.id], image });
+        safeEmit(to, 'image', { from: usernames[socket.id] || 'Anonymous', image });
     });
 
     // Listen for a "skip" event to re-pair the user with someone else
@@ -101,12 +130,12 @@ io.on('connection', (socket) => {
 
         // Notify the partner that the user skipped
         if (partner) {
-            io.to(partner).emit('userSkipped', usernames[socket.id]);
+            safeEmit(partner, 'userSkipped', usernames[socket.id] || 'Anonymous');
             users.push(partner); // Requeue the partner for a new pairing
         }
 
-        // Requeue the current user for a new pairing
-        users.push(socket.id);
+        // Requeue the current user for a new pairing (avoid duplicates)
+        if (!users.includes(socket.id)) users.push(socket.id);
 
         // Remove the pairings from the `pairs` object
         delete pairs[socket.id];
@@ -117,8 +146,8 @@ io.on('connection', (socket) => {
             const [user1, user2] = users.splice(0, 2);
             pairs[user1] = user2;
             pairs[user2] = user1;
-            io.to(user1).emit('matched', { partnerSocketId: user2, partnerUsername: usernames[user2] });
-            io.to(user2).emit('matched', { partnerSocketId: user1, partnerUsername: usernames[user1] });
+            safeEmit(user1, 'matched', { partnerSocketId: user2, partnerUsername: usernames[user2] || 'Anonymous' });
+            safeEmit(user2, 'matched', { partnerSocketId: user1, partnerUsername: usernames[user1] || 'Anonymous' });
         }
     });
 
@@ -129,7 +158,7 @@ io.on('connection', (socket) => {
 
         // Notify the partner if they exist
         if (partner) {
-            io.to(partner).emit('userDisconnected', usernames[socket.id]);
+            safeEmit(partner, 'userDisconnected', usernames[socket.id] || 'Anonymous');
             users.push(partner); // Requeue the partner for a new pairing
         }
 
@@ -149,15 +178,35 @@ io.on('connection', (socket) => {
 
         // Log the socket ID of the disconnected user
         console.log(`A user disconnected: ${socket.id}`);
+
+        // Notify admin panel of disconnection
+        try {
+            if (panel && typeof panel.logDisconnection === 'function') {
+                panel.logDisconnection(socket.id);
+            }
+        } catch (err) {
+            console.warn('panel.logDisconnection failed', err && err.message);
+        }
     });
 });
 
-// Start the HTTP server and listen on port 3000
-server.listen(3000, () => {
-    console.log('Server running on http://localhost:3000');
+// Global error handlers to avoid silent crashes
+process.on('uncaughtException', (err) => {
+    console.error('Uncaught exception:', err && err.stack || err);
+    // don't exit automatically; log and continue for now
 });
-const path = require('path');
 
+process.on('unhandledRejection', (reason) => {
+    console.error('Unhandled rejection:', reason);
+});
 
+server.on('error', (err) => {
+    console.error('Server error:', err && err.message);
+});
 
-// Create an instance of an Express application
+// Start the HTTP server and listen on dynamic port for deployment
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => {
+    console.log(`Server running on http://localhost:${PORT}`);
+});
+

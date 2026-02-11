@@ -6,7 +6,17 @@ const path = require('path');
 
 const app = express();
 const server = http.createServer(app);
-const wss = new WebSocket.Server({ server });
+// Attach WebSocket server on a specific path so clients can connect using /admin-ws
+const wss = new WebSocket.Server({ server, path: '/admin-ws' });
+
+// Handle WebSocketServer-level errors gracefully (e.g. port already in use)
+wss.on('error', (err) => {
+    if (err && err.code === 'EADDRINUSE') {
+        console.error(`Admin WS error: port already in use (${err.code}).`);
+        return;
+    }
+    console.error('Admin WS error:', err && err.message);
+});
 
 // Store active connections and users
 // activeConnections stores connectedAt as epoch (ms) for reliable math
@@ -142,6 +152,15 @@ module.exports = {
 // Start the admin panel server if run directly
 const PORT = process.env.PORT || 3001;
 if (require.main === module) {
+    // handle listen errors (port in use) gracefully so dev tooling doesn't crash
+    server.on('error', (err) => {
+        if (err && err.code === 'EADDRINUSE') {
+            console.error(`Admin panel: port ${PORT} already in use. Panel will not start. Set PORT env or free the port.`);
+            return;
+        }
+        console.error('Admin panel server error:', err && err.message);
+    });
+
     server.listen(PORT, () => {
         console.log(`Admin panel running on http://localhost:${PORT}`);
     });
