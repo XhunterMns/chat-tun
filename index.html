@@ -115,6 +115,8 @@
 
         let partnerSocketId = null;
         let partnerUsername = '';
+        let myUsername = null;
+        let isPaired = false;
 
         const userCountElement = document.getElementById('user-count');
 
@@ -127,6 +129,7 @@
             const gender = document.getElementById('gender').value;
 
             if (username) {
+                myUsername = username;
                 socket.emit('setUsername', username);
 
                 // Change the username display based on gender
@@ -146,6 +149,7 @@
         socket.on('matched', ({ partnerSocketId: partnerId, partnerUsername: partnerName }) => {
             partnerSocketId = partnerId;
             partnerUsername = partnerName;
+            isPaired = true;
             messages.innerHTML += `<p>You're now chatting with <strong>${partnerUsername}</strong>.</p>`;
         });
 
@@ -179,8 +183,29 @@
         socket.on('userDisconnected', (disconnectedUsername) => {
             messages.innerHTML += `<p class="message disconnect">User <strong>${disconnectedUsername}</strong> disconnected.</p>`;
             partnerSocketId = null;
+            isPaired = false;
         });
 
+        socket.on('connect', () => {
+            // when reconnecting, if user had a username, re-emit to rejoin queue
+            messages.innerHTML += `<p class="message">Connected to server.</p>`;
+            if (myUsername) {
+                // re-submit username to requeue for pairing
+                socket.emit('setUsername', myUsername);
+            }
+        });
+
+        socket.on('disconnect', (reason) => {
+            messages.innerHTML += `<p class="message disconnect">Disconnected: ${reason || 'connection lost'}. Trying to reconnect...</p>`;
+            partnerSocketId = null;
+            isPaired = false;
+        });
+
+        socket.on('connect_error', (err) => {
+            console.warn('Connection error', err);
+        });
+
+        
         sendButton.addEventListener('click', () => {
             const textMessage = messageInput.value.trim();
             const file = imageInput.files[0];

@@ -1,240 +1,148 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Chat App</title>
-    <script src="/socket.io/socket.io.js"></script>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            background: linear-gradient(to right, #243594, #030457);
-            margin: 0;
-            padding: 0;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-            color: #333;
+const express = require('express');
+
+// Import Node.js's HTTP module to create the server
+const http = require('http');
+
+// Import the Socket.IO library to enable real-time, bidirectional communication
+const { Server } = require('socket.io');
+
+// Import the `path` module to work with file and directory paths
+const path = require('path');
+
+// Create an instance of an Express application
+const app = express();
+
+// Create an HTTP server using the Express app
+const server = http.createServer(app);
+
+// Attach a new Socket.IO server to the HTTP server
+const io = new Server(server);
+
+// Serve static files (e.g., CSS, JS, images) from the current directory
+app.use(express.static(path.join(__dirname)));
+
+// Serve the main HTML file when the root URL ("/") is accessed
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'index.html'));
+});
+
+// Initialize an array to track unpaired users
+let users = [];
+
+// Initialize an object to store user pairings
+let pairs = {};
+
+// Initialize an object to map socket IDs to usernames
+let usernames = {};
+
+// Initialize a counter to track the total number of connected users
+let userCount = 0;
+
+// Set up a connection event listener for new clients
+io.on('connection', (socket) => {
+    // Increment the total user count when a new user connects
+    userCount++;
+
+    // Broadcast the updated user count to all connected clients
+    io.emit('updateUserCount', userCount);
+
+    // Log the socket ID of the newly connected user
+    console.log(`A user connected: ${socket.id}`);
+
+    // Listen for a "setUsername" event from the client to set a username
+    socket.on('setUsername', (username) => {
+        // Store the username associated with the socket ID
+        usernames[socket.id] = username;
+
+        // Add the user's socket ID to the list of unpaired users
+        users.push(socket.id);
+
+        // If there are at least two users available, pair them
+        if (users.length >= 2) {
+            // Remove two users from the queue
+            const [user1, user2] = users.splice(0, 2);
+
+            // Save the pairing in the `pairs` object
+            pairs[user1] = user2;
+            pairs[user2] = user1;
+
+            // Notify both users that they have been paired
+            io.to(user1).emit('matched', { partnerSocketId: user2, partnerUsername: usernames[user2] });
+            io.to(user2).emit('matched', { partnerSocketId: user1, partnerUsername: usernames[user1] });
         }
-        #username-form {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
+    });
+
+    // Listen for a "message" event and forward it to the intended recipient
+    socket.on('message', ({ to, message }) => {
+        // Send the message to the recipient with the sender's username
+        io.to(to).emit('message', { from: usernames[socket.id], message });
+    });
+
+    // Listen for an "image" event and forward it to the intended recipient
+    socket.on('image', ({ to, image }) => {
+        // Send the image to the recipient with the sender's username
+        io.to(to).emit('image', { from: usernames[socket.id], image });
+    });
+
+    // Listen for a "skip" event to re-pair the user with someone else
+    socket.on('skip', () => {
+        // Find the current user's partner
+        const partner = pairs[socket.id];
+
+        // Notify the partner that the user skipped
+        if (partner) {
+            io.to(partner).emit('userSkipped', usernames[socket.id]);
+            users.push(partner); // Requeue the partner for a new pairing
         }
-        .chat-box {
-            background-color: #fff;
-            border-radius: 10px;
-            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
-            overflow: hidden;
-            max-width: 800px;
-            max-height: fit-content;
-            width: 100%;
-            display: none;
+
+        // Requeue the current user for a new pairing
+        users.push(socket.id);
+
+        // Remove the pairings from the `pairs` object
+        delete pairs[socket.id];
+        delete pairs[partner];
+
+        // If there are enough users, pair them again
+        if (users.length >= 2) {
+            const [user1, user2] = users.splice(0, 2);
+            pairs[user1] = user2;
+            pairs[user2] = user1;
+            io.to(user1).emit('matched', { partnerSocketId: user2, partnerUsername: usernames[user2] });
+            io.to(user2).emit('matched', { partnerSocketId: user1, partnerUsername: usernames[user1] });
         }
-        .messages {
-            border-bottom: 1px solid #ddd;
-            height: 400px;
-            overflow-y: auto;
-            padding: 10px;
-            background-color: #f9f9f9;
+    });
+
+    // Handle disconnection of a user
+    socket.on('disconnect', () => {
+        // Find the current user's partner
+        const partner = pairs[socket.id];
+
+        // Notify the partner if they exist
+        if (partner) {
+            io.to(partner).emit('userDisconnected', usernames[socket.id]);
+            users.push(partner); // Requeue the partner for a new pairing
         }
-        .messages p {
-            margin: 5px 0;
-        }
-        .messages p strong {
-            color: #0078d7;
-        }
-        .input-box {
-            display: flex;
-            padding: 10px;
-            background-color: #f0f0f0;
-        }
-        .input-box input {
-            flex: 1;
-            padding: 10px;
-            font-size: 16px;
-            border: 1px solid #ddd;
-            border-radius: 5px;
-            margin-right: 10px;
-        }
-        .input-box button {
-            padding: 10px 20px;
-            font-size: 16px;
-            background-color: #0078d7;
-            color: white;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-        }
-        .message.disconnect {
-            color: #ff4f4f;
-            font-weight: bold;
-        }
-        .message.skip {
-            color: #ff9f1c;
-            font-weight: bold;
-        }
-    </style>
-</head>
-<body>
-    <div class="input-box" id="username-form">
-        <h2>enter your username</h2><br>
-        <h4>ekteb esmk</h4><br>
-        <input type="text" id="username" placeholder="Enter your username"><br>
-        <button id="start-chat">Start Chat</button><br>
-        <select id="gender"><br>
-            <br>
-            <option value="m">male</option>
-            <option value="f">female</option>
-        </select>
-        <div id="user-count">Users online: 0</div>
-    </div>
-    <div class="chat-box">
-        <div class="messages" id="messages"></div>
-        <div class="input-box">
-            <input type="text" id="message" placeholder="Type a message...">
-            <button id="send">Send</button>
-            <button id="skip">Skip</button>
-            <button id="back">back</button>
-        </div>
-        <input class="input-box" id="image-file" type="file">
-    </div>
 
-    <script>
-        const socket = io();
-        const usernameForm = document.getElementById('username-form');
-        const usernameInput = document.getElementById('username');
-        const startChatButton = document.getElementById('start-chat');
-        const chatBox = document.querySelector('.chat-box');
-        const messages = document.getElementById('messages');
-        const messageInput = document.getElementById('message');
-        const sendButton = document.getElementById('send');
-        const skipButton = document.getElementById('skip');
-        const imageInput = document.getElementById('image-file');
+        // Remove the disconnected user from the queue
+        users = users.filter((id) => id !== socket.id);
 
-        let partnerSocketId = null;
-        let partnerUsername = '';
-        let myUsername = null;
-        let isPaired = false;
+        // Remove pairings and username mappings for the disconnected user
+        delete pairs[socket.id];
+        delete pairs[partner];
+        delete usernames[socket.id];
 
-        const userCountElement = document.getElementById('user-count');
+        // Decrement the user count
+        userCount--;
 
-        socket.on('updateUserCount', (count) => {
-            userCountElement.textContent = `Users online: ${count}`;
-        });
+        // Broadcast the updated user count to all connected clients
+        io.emit('updateUserCount', userCount);
 
-        startChatButton.addEventListener('click', () => {
-            const username = usernameInput.value.trim();
-            const gender = document.getElementById('gender').value;
+        // Log the socket ID of the disconnected user
+        console.log(`A user disconnected: ${socket.id}`);
+    });
+});
 
-            if (username) {
-                myUsername = username;
-                socket.emit('setUsername', username);
-
-                // Change the username display based on gender
-                let coloredUsername = `<span style="color: ${gender === 'f' ? 'red' : 'blue'};">${username}</span>`;
-                
-                // Hide the form and show the chat box
-                usernameForm.style.display = 'none';
-                chatBox.style.display = 'block';
-
-                // Display the username with color
-                messages.innerHTML += `<p>Welcome, ${coloredUsername}!</p>`;
-            } else {
-                alert('Please enter a username!');
-            }
-        });
-
-        socket.on('matched', ({ partnerSocketId: partnerId, partnerUsername: partnerName }) => {
-            partnerSocketId = partnerId;
-            partnerUsername = partnerName;
-            isPaired = true;
-            messages.innerHTML += `<p>You're now chatting with <strong>${partnerUsername}</strong>.</p>`;
-        });
-
-        const notificationSound = new Audio('https://bigsoundbank.com/UPLOAD/mp3/3261.mp3');
-
-        socket.on('message', ({ from, message }) => {
-            messages.innerHTML += `<p><strong>${from}:</strong> ${message}</p>`;
-            messages.scrollTop = messages.scrollHeight;
-            notificationSound.play();
-        });
-
-        socket.on('image', ({ from, image }) => {
-            const img = document.createElement('img');
-            img.src = image;
-            img.alt = `Image from ${from}`;
-            img.style.maxWidth = '100%';
-            img.style.marginTop = '5px';
-
-            const messageElement = document.createElement('p');
-            messageElement.innerHTML = `<strong>${from}:</strong>`;
-            messageElement.appendChild(img);
-
-            messages.appendChild(messageElement);
-            messages.scrollTop = messages.scrollHeight;
-        });
-
-        socket.on('userSkipped', (skipperUsername) => {
-            messages.innerHTML += `<p class="message skip">User <strong>${skipperUsername}</strong> skipped. Finding a new partner...</p>`;
-        });
-
-        socket.on('userDisconnected', (disconnectedUsername) => {
-            messages.innerHTML += `<p class="message disconnect">User <strong>${disconnectedUsername}</strong> disconnected.</p>`;
-            partnerSocketId = null;
-            isPaired = false;
-        });
-
-        socket.on('connect', () => {
-            // when reconnecting, if user had a username, re-emit to rejoin queue
-            messages.innerHTML += `<p class="message">Connected to server.</p>`;
-            if (myUsername) {
-                // re-submit username to requeue for pairing
-                socket.emit('setUsername', myUsername);
-            }
-        });
-
-        socket.on('disconnect', (reason) => {
-            messages.innerHTML += `<p class="message disconnect">Disconnected: ${reason || 'connection lost'}. Trying to reconnect...</p>`;
-            partnerSocketId = null;
-            isPaired = false;
-        });
-
-        socket.on('connect_error', (err) => {
-            console.warn('Connection error', err);
-        });
-
-        sendButton.addEventListener('click', () => {
-            const textMessage = messageInput.value.trim();
-            const file = imageInput.files[0];
-
-            if (textMessage && partnerSocketId) {
-                socket.emit('message', { to: partnerSocketId, message: textMessage });
-                messages.innerHTML += `<p><strong>You:</strong> ${textMessage}</p>`;
-                messageInput.value = '';
-            }
-
-            if (file && partnerSocketId) {
-                const reader = new FileReader();
-                reader.onload = () => {
-                    const base64Image = reader.result;
-                    socket.emit('image', { to: partnerSocketId, image: base64Image });
-                    messages.innerHTML += `<p><strong>You:</strong> <img src="${base64Image}" style="max-width:40%;"></p>`;
-                };
-                reader.readAsDataURL(file);
-                imageInput.value = '';
-            }
-
-            messages.scrollTop = messages.scrollHeight;
-        });
-        document.getElementById('back').addEventListener('click', function() {
-            location.reload();
-        });
-        skipButton.addEventListener('click', () => {
-            socket.emit('skip');
-            messages.innerHTML = '<p>Finding a new partner...</p>';
-        });
-    </script>
-</body>
-</html>
+// Start the HTTP server and listen on port 3000
+server.listen(3000, () => {
+    console.log('Server running on http://localhost:3000');
+});
