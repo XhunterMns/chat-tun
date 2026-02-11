@@ -140,7 +140,7 @@ module.exports = {
 };
 
 // Start the admin panel server if run directly
-const PORT = 3001;
+const PORT = process.env.PORT || 3001;
 if (require.main === module) {
     server.listen(PORT, () => {
         console.log(`Admin panel running on http://localhost:${PORT}`);
