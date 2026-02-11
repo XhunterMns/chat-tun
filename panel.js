@@ -9,32 +9,49 @@ const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
 // Store active connections and users
-const activeConnections = new Map(); // socket.id -> { username, ip, connectedAt }
+// activeConnections stores connectedAt as epoch (ms) for reliable math
+const activeConnections = new Map(); // socket.id -> { socketId, username, ip, connectedAt }
 const connectionLogs = [];
 
-// Helper function for timestamps
+// Helper function for timestamps (ISO)
 function getTimestamp() {
-    return new Date().toISOString().replace('T', ' ').substring(0, 19);
+    return new Date().toISOString();
 }
 
 // WebSocket connection for real-time updates
 wss.on('connection', (ws) => {
     // Send current state to new admin panel connections
+    const usersForClient = Array.from(activeConnections.values()).map(u => ({
+        socketId: u.socketId,
+        username: u.username,
+        ip: u.ip,
+        connectedAt: new Date(u.connectedAt).toISOString()
+    }));
+
     ws.send(JSON.stringify({
         type: 'init',
-        users: Array.from(activeConnections.values()),
+        users: usersForClient,
         logs: connectionLogs.slice(-100) // Last 100 logs
     }));
 });
 
 // Function to broadcast updates to all admin panels
-function broadcastUpdate() {
-    const data = JSON.stringify({
+function broadcastUpdate(newLog) {
+    const usersForClient = Array.from(activeConnections.values()).map(u => ({
+        socketId: u.socketId,
+        username: u.username,
+        ip: u.ip,
+        connectedAt: new Date(u.connectedAt).toISOString()
+    }));
+
+    const payload = {
         type: 'update',
         userCount: activeConnections.size,
-        users: Array.from(activeConnections.values()),
-        newLogs: connectionLogs.slice(-1)[0] // Just the latest log
-    });
+        users: usersForClient,
+        newLogs: Array.isArray(newLog) ? newLog : (newLog ? [newLog] : [])
+    };
+
+    const data = JSON.stringify(payload);
     
     wss.clients.forEach(client => {
         if (client.readyState === WebSocket.OPEN) {
@@ -43,14 +60,22 @@ function broadcastUpdate() {
     });
 }
 
-// Middleware to serve static files
-app.use(express.static(path.join(__dirname, 'public')));
+// Middleware to serve static files (serve panel.html from repo root)
+app.use(express.static(path.join(__dirname)));
+app.get('/panel', (req, res) => {
+    res.sendFile(path.join(__dirname, 'panel.html'));
+});
 
 // API endpoint to get current data
 app.get('/api/data', (req, res) => {
     res.json({
         userCount: activeConnections.size,
-        users: Array.from(activeConnections.values()),
+        users: Array.from(activeConnections.values()).map(u => ({
+            socketId: u.socketId,
+            username: u.username,
+            ip: u.ip,
+            connectedAt: new Date(u.connectedAt).toISOString()
+        })),
         logs: connectionLogs
     });
 });
@@ -59,11 +84,12 @@ app.get('/api/data', (req, res) => {
 module.exports = {
     logConnection: (socketId, username, ip) => {
         const timestamp = getTimestamp();
+        const now = Date.now();
         const userData = { 
             socketId, 
             username, 
             ip, 
-            connectedAt: timestamp 
+            connectedAt: now 
         };
         
         activeConnections.set(socketId, userData);
@@ -74,45 +100,49 @@ module.exports = {
             username,
             ip
         });
-        
-        broadcastUpdate();
+
+        // broadcast only the new log
+        broadcastUpdate(connectionLogs.slice(-1));
     },
     
     logDisconnection: (socketId) => {
         const timestamp = getTimestamp();
         const user = activeConnections.get(socketId) || {};
+        const duration = user.connectedAt ? Math.round((Date.now() - user.connectedAt) / 1000) : 0;
         
-        connectionLogs.push({
+        const logEntry = {
             timestamp,
             event: 'disconnect',
             socketId,
             username: user.username,
             ip: user.ip,
-            duration: user.connectedAt 
-                ? Math.round((new Date(timestamp) - new Date(user.connectedAt)) / 1000) 
-                : 0
-        });
-        
+            duration
+        };
+
+        connectionLogs.push(logEntry);
         activeConnections.delete(socketId);
-        broadcastUpdate();
+        broadcastUpdate(logEntry);
     },
     
     logMessage: (from, to, message) => {
         const timestamp = getTimestamp();
-        connectionLogs.push({
+        const safeMsg = typeof message === 'string' ? message.substring(0, 100) : '';
+        const logEntry = {
             timestamp,
             event: 'message',
             from,
             to,
-            message: message.substring(0, 100) // Truncate long messages
-        });
-        
-        broadcastUpdate();
+            message: safeMsg
+        };
+        connectionLogs.push(logEntry);
+        broadcastUpdate(logEntry);
     }
 };
 
-// Start the admin panel server
+// Start the admin panel server if run directly
 const PORT = 3001;
-server.listen(PORT, () => {
-    console.log(`Admin panel running on http://localhost:${PORT}`);
-});
+if (require.main === module) {
+    server.listen(PORT, () => {
+        console.log(`Admin panel running on http://localhost:${PORT}`);
+    });
+}
