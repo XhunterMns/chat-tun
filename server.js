@@ -71,22 +71,26 @@ io.on('connection', (socket) => {
             pairs[user1] = user2;
             pairs[user2] = user1;
 
-            // Notify both users that they have been paired
-            io.to(user1).emit('matched', { partnerSocketId: user2, partnerUsername: usernames[user2] });
-            io.to(user2).emit('matched', { partnerSocketId: user1, partnerUsername: usernames[user1] });
+            // Notify both users that they have been paired (use fallback if username missing)
+            io.to(user1).emit('matched', { partnerSocketId: user2, partnerUsername: usernames[user2] || 'Anonymous' });
+            io.to(user2).emit('matched', { partnerSocketId: user1, partnerUsername: usernames[user1] || 'Anonymous' });
         }
     });
 
     // Listen for a "message" event and forward it to the intended recipient
     socket.on('message', ({ to, message }) => {
-        // Send the message to the recipient with the sender's username
-        io.to(to).emit('message', { from: usernames[socket.id], message });
+        // Send the message to the recipient with the sender's username (only if recipient exists)
+        if (to && io.sockets.sockets.get(to)) {
+            io.to(to).emit('message', { from: usernames[socket.id] || 'Anonymous', message });
+        }
     });
 
     // Listen for an "image" event and forward it to the intended recipient
     socket.on('image', ({ to, image }) => {
-        // Send the image to the recipient with the sender's username
-        io.to(to).emit('image', { from: usernames[socket.id], image });
+        // Send the image to the recipient with the sender's username (only if recipient exists)
+        if (to && io.sockets.sockets.get(to)) {
+            io.to(to).emit('image', { from: usernames[socket.id] || 'Anonymous', image });
+        }
     });
 
     // Listen for a "skip" event to re-pair the user with someone else
@@ -112,8 +116,8 @@ io.on('connection', (socket) => {
             const [user1, user2] = users.splice(0, 2);
             pairs[user1] = user2;
             pairs[user2] = user1;
-            io.to(user1).emit('matched', { partnerSocketId: user2, partnerUsername: usernames[user2] });
-            io.to(user2).emit('matched', { partnerSocketId: user1, partnerUsername: usernames[user1] });
+            io.to(user1).emit('matched', { partnerSocketId: user2, partnerUsername: usernames[user2] || 'Anonymous' });
+            io.to(user2).emit('matched', { partnerSocketId: user1, partnerUsername: usernames[user1] || 'Anonymous' });
         }
     });
 

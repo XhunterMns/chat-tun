@@ -100,144 +100,171 @@
     </div>
 
     <script>
-    // Allow connecting to an explicit SOCKET server via query param `?socket=` or global `window.SOCKET_URL`.
-    // Example: https://your-static-host/?socket=https://your-socket-server.com
-    const _params = new URLSearchParams(window.location.search);
-    const SOCKET_URL = _params.get('socket') || window.SOCKET_URL || undefined;
-    const socket = SOCKET_URL ? io(SOCKET_URL, { transports: ['websocket', 'polling'] }) : io();
-        const usernameForm = document.getElementById('username-form');
-        const usernameInput = document.getElementById('username');
-        const startChatButton = document.getElementById('start-chat');
-        const chatBox = document.querySelector('.chat-box');
-        const messages = document.getElementById('messages');
-        const messageInput = document.getElementById('message');
-        const sendButton = document.getElementById('send');
-        const skipButton = document.getElementById('skip');
-        const imageInput = document.getElementById('image-file');
+    (function(){
+        // dynamic loader: try CDN first, then fallback to local /socket.io/socket.io.js
+        function loadScript(src){
+            return new Promise((resolve, reject) => {
+                const s = document.createElement('script');
+                s.src = src;
+                s.async = true;
+                s.onload = () => resolve();
+                s.onerror = () => reject(new Error('Failed to load ' + src));
+                document.head.appendChild(s);
+            });
+        }
 
-        let partnerSocketId = null;
-        let partnerUsername = '';
-        let myUsername = null;
-        let isPaired = false;
+        // Initialize after socket.io client is available
+        function initClient(){
+            // Allow connecting to an explicit SOCKET server via query param `?socket=` or global `window.SOCKET_URL`.
+            const _params = new URLSearchParams(window.location.search);
+            const SOCKET_URL = _params.get('socket') || window.SOCKET_URL || undefined;
+            const socket = SOCKET_URL ? io(SOCKET_URL, { transports: ['websocket', 'polling'] }) : io();
 
-        const userCountElement = document.getElementById('user-count');
+            const usernameForm = document.getElementById('username-form');
+            const usernameInput = document.getElementById('username');
+            const startChatButton = document.getElementById('start-chat');
+            const chatBox = document.querySelector('.chat-box');
+            const messages = document.getElementById('messages');
+            const messageInput = document.getElementById('message');
+            const sendButton = document.getElementById('send');
+            const skipButton = document.getElementById('skip');
+            const imageInput = document.getElementById('image-file');
 
-        socket.on('updateUserCount', (count) => {
-            userCountElement.textContent = `Users online: ${count}`;
-        });
+            let partnerSocketId = null;
+            let partnerUsername = '';
+            let myUsername = null;
+            let isPaired = false;
 
-        startChatButton.addEventListener('click', () => {
-            const username = usernameInput.value.trim();
-            const gender = document.getElementById('gender').value;
+            const userCountElement = document.getElementById('user-count');
 
-            if (username) {
-                myUsername = username;
-                socket.emit('setUsername', username);
+            socket.on('updateUserCount', (count) => {
+                userCountElement.textContent = `Users online: ${count}`;
+            });
 
-                // Change the username display based on gender
-                let coloredUsername = `<span style="color: ${gender === 'f' ? 'red' : 'blue'};">${username}</span>`;
-                
-                // Hide the form and show the chat box
-                usernameForm.style.display = 'none';
-                chatBox.style.display = 'block';
+            startChatButton.addEventListener('click', () => {
+                const username = usernameInput.value.trim();
+                const gender = document.getElementById('gender').value;
 
-                // Display the username with color
-                messages.innerHTML += `<p>Welcome, ${coloredUsername}!</p>`;
-            } else {
-                alert('Please enter a username!');
-            }
-        });
+                if (username) {
+                    myUsername = username;
+                    socket.emit('setUsername', username);
 
-        socket.on('matched', ({ partnerSocketId: partnerId, partnerUsername: partnerName }) => {
-            partnerSocketId = partnerId;
-            partnerUsername = partnerName;
-            isPaired = true;
-            messages.innerHTML += `<p>You're now chatting with <strong>${partnerUsername}</strong>.</p>`;
-        });
+                    // Change the username display based on gender
+                    let coloredUsername = `<span style="color: ${gender === 'f' ? 'red' : 'blue'};">${username}</span>`;
+                    
+                    // Hide the form and show the chat box
+                    usernameForm.style.display = 'none';
+                    chatBox.style.display = 'block';
 
-        const notificationSound = new Audio('https://bigsoundbank.com/UPLOAD/mp3/3261.mp3');
+                    // Display the username with color
+                    messages.innerHTML += `<p>Welcome, ${coloredUsername}!</p>`;
+                } else {
+                    alert('Please enter a username!');
+                }
+            });
 
-        socket.on('message', ({ from, message }) => {
-            messages.innerHTML += `<p><strong>${from}:</strong> ${message}</p>`;
-            messages.scrollTop = messages.scrollHeight;
-            notificationSound.play();
-        });
+            socket.on('matched', ({ partnerSocketId: partnerId, partnerUsername: partnerName }) => {
+                partnerSocketId = partnerId;
+                partnerUsername = partnerName;
+                isPaired = true;
+                messages.innerHTML += `<p>You're now chatting with <strong>${partnerUsername}</strong>.</p>`;
+            });
 
-        socket.on('image', ({ from, image }) => {
-            const img = document.createElement('img');
-            img.src = image;
-            img.alt = `Image from ${from}`;
-            img.style.maxWidth = '100%';
-            img.style.marginTop = '5px';
+            const notificationSound = new Audio('https://bigsoundbank.com/UPLOAD/mp3/3261.mp3');
 
-            const messageElement = document.createElement('p');
-            messageElement.innerHTML = `<strong>${from}:</strong>`;
-            messageElement.appendChild(img);
+            socket.on('message', ({ from, message }) => {
+                messages.innerHTML += `<p><strong>${from}:</strong> ${message}</p>`;
+                messages.scrollTop = messages.scrollHeight;
+                try{ notificationSound.play(); }catch(e){}
+            });
 
-            messages.appendChild(messageElement);
-            messages.scrollTop = messages.scrollHeight;
-        });
+            socket.on('image', ({ from, image }) => {
+                const img = document.createElement('img');
+                img.src = image;
+                img.alt = `Image from ${from}`;
+                img.style.maxWidth = '100%';
+                img.style.marginTop = '5px';
 
-        socket.on('userSkipped', (skipperUsername) => {
-            messages.innerHTML += `<p class="message skip">User <strong>${skipperUsername}</strong> skipped. Finding a new partner...</p>`;
-        });
+                const messageElement = document.createElement('p');
+                messageElement.innerHTML = `<strong>${from}:</strong>`;
+                messageElement.appendChild(img);
 
-        socket.on('userDisconnected', (disconnectedUsername) => {
-            messages.innerHTML += `<p class="message disconnect">User <strong>${disconnectedUsername}</strong> disconnected.</p>`;
-            partnerSocketId = null;
-            isPaired = false;
-        });
+                messages.appendChild(messageElement);
+                messages.scrollTop = messages.scrollHeight;
+            });
 
-        socket.on('connect', () => {
-            // when reconnecting, if user had a username, re-emit to rejoin queue
-            messages.innerHTML += `<p class="message">Connected to server.</p>`;
-            if (myUsername) {
-                // re-submit username to requeue for pairing
-                socket.emit('setUsername', myUsername);
-            }
-        });
+            socket.on('userSkipped', (skipperUsername) => {
+                messages.innerHTML += `<p class="message skip">User <strong>${skipperUsername}</strong> skipped. Finding a new partner...</p>`;
+            });
 
-        socket.on('disconnect', (reason) => {
-            messages.innerHTML += `<p class="message disconnect">Disconnected: ${reason || 'connection lost'}. Trying to reconnect...</p>`;
-            partnerSocketId = null;
-            isPaired = false;
-        });
+            socket.on('userDisconnected', (disconnectedUsername) => {
+                messages.innerHTML += `<p class="message disconnect">User <strong>${disconnectedUsername}</strong> disconnected.</p>`;
+                partnerSocketId = null;
+                isPaired = false;
+            });
 
-        socket.on('connect_error', (err) => {
-            console.warn('Connection error', err);
-        });
+            socket.on('connect', () => {
+                // when reconnecting, if user had a username, re-emit to rejoin queue
+                messages.innerHTML += `<p class="message">Connected to server.</p>`;
+                if (myUsername) {
+                    // re-submit username to requeue for pairing
+                    socket.emit('setUsername', myUsername);
+                }
+            });
 
-        
-        sendButton.addEventListener('click', () => {
-            const textMessage = messageInput.value.trim();
-            const file = imageInput.files[0];
+            socket.on('disconnect', (reason) => {
+                messages.innerHTML += `<p class="message disconnect">Disconnected: ${reason || 'connection lost'}. Trying to reconnect...</p>`;
+                partnerSocketId = null;
+                isPaired = false;
+            });
 
-            if (textMessage && partnerSocketId) {
-                socket.emit('message', { to: partnerSocketId, message: textMessage });
-                messages.innerHTML += `<p><strong>You:</strong> ${textMessage}</p>`;
-                messageInput.value = '';
-            }
+            socket.on('connect_error', (err) => {
+                console.warn('Connection error', err);
+            });
 
-            if (file && partnerSocketId) {
-                const reader = new FileReader();
-                reader.onload = () => {
-                    const base64Image = reader.result;
-                    socket.emit('image', { to: partnerSocketId, image: base64Image });
-                    messages.innerHTML += `<p><strong>You:</strong> <img src="${base64Image}" style="max-width:40%;"></p>`;
-                };
-                reader.readAsDataURL(file);
-                imageInput.value = '';
-            }
+            sendButton.addEventListener('click', () => {
+                const textMessage = messageInput.value.trim();
+                const file = imageInput.files[0];
 
-            messages.scrollTop = messages.scrollHeight;
-        });
-        document.getElementById('back').addEventListener('click', function() {
-            location.reload();
-        });
-        skipButton.addEventListener('click', () => {
-            socket.emit('skip');
-            messages.innerHTML = '<p>Finding a new partner...</p>';
-        });
+                if (textMessage && partnerSocketId) {
+                    socket.emit('message', { to: partnerSocketId, message: textMessage });
+                    messages.innerHTML += `<p><strong>You:</strong> ${textMessage}</p>`;
+                    messageInput.value = '';
+                }
+
+                if (file && partnerSocketId) {
+                    const reader = new FileReader();
+                    reader.onload = () => {
+                        const base64Image = reader.result;
+                        socket.emit('image', { to: partnerSocketId, image: base64Image });
+                        messages.innerHTML += `<p><strong>You:</strong> <img src="${base64Image}" style="max-width:40%;"></p>`;
+                    };
+                    reader.readAsDataURL(file);
+                    imageInput.value = '';
+                }
+
+                messages.scrollTop = messages.scrollHeight;
+            });
+            document.getElementById('back').addEventListener('click', function() {
+                location.reload();
+            });
+            skipButton.addEventListener('click', () => {
+                socket.emit('skip');
+                messages.innerHTML = '<p>Finding a new partner...</p>';
+            });
+        }
+
+        // Try CDN first, then local fallback
+        loadScript('https://cdn.socket.io/4.8.1/socket.io.min.js')
+            .then(initClient)
+            .catch(() => {
+                return loadScript('/socket.io/socket.io.js').then(initClient).catch((err) => {
+                    const messages = document.getElementById('messages');
+                    if (messages) messages.innerHTML += `<p class="message disconnect">Realtime client failed to load. Check network or host the socket server separately.</p>`;
+                    console.error('Failed to load socket.io client from CDN and local fallback', err);
+                });
+            });
+    })();
     </script>
 </body>
 </html>
