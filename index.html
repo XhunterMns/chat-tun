@@ -3,8 +3,6 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Chat Tun</title>
-    <script src="/socket.io/socket.io.js"></script>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -102,7 +100,11 @@
     </div>
 
     <script>
-        const socket = io();
+    // Allow connecting to an explicit SOCKET server via query param `?socket=` or global `window.SOCKET_URL`.
+    // Example: https://your-static-host/?socket=https://your-socket-server.com
+    const _params = new URLSearchParams(window.location.search);
+    const SOCKET_URL = _params.get('socket') || window.SOCKET_URL || undefined;
+    const socket = SOCKET_URL ? io(SOCKET_URL, { transports: ['websocket', 'polling'] }) : io();
         const usernameForm = document.getElementById('username-form');
         const usernameInput = document.getElementById('username');
         const startChatButton = document.getElementById('start-chat');
