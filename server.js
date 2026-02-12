@@ -18,12 +18,31 @@ const server = http.createServer(app);
 // Attach a new Socket.IO server to the HTTP server
 const io = new Server(server);
 
+// Record visits for page loads (run before static middleware so root GET is captured)
+app.use((req, res, next) => {
+    try {
+        if (req.method === 'GET' && (req.path === '/' || req.path === '/index.html')) {
+            recordVisit(req);
+        }
+    } catch (e) { /* ignore */ }
+    next();
+});
+
 // Serve static files (e.g., CSS, JS, images) from the current directory
 app.use(express.static(path.join(__dirname)));
 
-// Serve the main HTML file when the root URL ("/") is accessed
+// Serve the main HTML file when the root URL ("/") is accessed (fallback)
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
+});
+
+// Stats API for admin UI
+app.get('/api/stats', (req, res) => {
+    try {
+        res.json(summarizeStats(30));
+    } catch (e) {
+        res.status(500).json({ error: 'failed' });
+    }
 });
 
 // Initialize an array to track unpaired users
@@ -51,6 +70,81 @@ function safeEmit(to, event, payload) {
 
 // Admin WebSocket server will be attached to the same HTTP server
 const WebSocket = require('ws');
+const fs = require('fs');
+
+// Stats file (persisted)
+const STATS_FILE = path.join(__dirname, 'stats.json');
+let stats = { visits: [] };
+
+// Load persisted stats at startup
+try {
+    if (fs.existsSync(STATS_FILE)) {
+        const raw = fs.readFileSync(STATS_FILE, 'utf8');
+        stats = JSON.parse(raw || '{}');
+        if (!Array.isArray(stats.visits)) stats.visits = [];
+    }
+} catch (e) {
+    console.warn('Failed to load stats file', e && e.message);
+    stats = { visits: [] };
+}
+
+function saveStats() {
+    try {
+        fs.writeFileSync(STATS_FILE, JSON.stringify(stats, null, 2), 'utf8');
+    } catch (e) {
+        console.warn('Failed to save stats', e && e.message);
+    }
+}
+
+function recordVisit(req) {
+    try {
+        const ip = (req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').toString();
+        const entry = { ts: Date.now(), ip };
+        stats.visits.push(entry);
+        saveStats();
+
+        // Broadcast updated stats to admin clients
+        const summary = summarizeStats();
+        adminLogs.push({ timestamp: new Date().toISOString(), event: 'visit', ip });
+        adminBroadcast({ type: 'stats', stats: summary });
+    } catch (e) {
+        console.warn('recordVisit failed', e && e.message);
+    }
+}
+
+function summarizeStats(days = 14) {
+    // Use UTC-based day boundaries to avoid local timezone offset issues
+    const now = new Date();
+    const labels = [];
+    for (let i = days - 1; i >= 0; i--) {
+        const utcYear = now.getUTCFullYear();
+        const utcMonth = now.getUTCMonth();
+        const utcDate = now.getUTCDate() - i;
+        const d = new Date(Date.UTC(utcYear, utcMonth, utcDate));
+        labels.push(d.toISOString().slice(0, 10));
+    }
+
+    const counts = labels.map(label => 0);
+    const uniquePerDay = labels.map(() => new Set());
+
+    for (const v of stats.visits) {
+        // use UTC date string for the visit timestamp
+        const d = new Date(v.ts).toISOString().slice(0, 10);
+        const idx = labels.indexOf(d);
+        if (idx >= 0) {
+            counts[idx]++;
+            uniquePerDay[idx].add(v.ip);
+        }
+    }
+
+    return {
+        totalVisits: stats.visits.length,
+        days: labels,
+        counts,
+        uniqueCounts: uniquePerDay.map(s => s.size),
+        uniqueTotal: (() => new Set(stats.visits.map(v => v.ip)).size)()
+    };
+}
 
 // Admin state: active users and logs
 const adminLogs = [];
@@ -100,8 +194,12 @@ wss.on('connection', (ws, req) => {
             if (data && data.type === 'kick' && data.socketId) {
                 const target = io.sockets.sockets.get(data.socketId);
                 if (target) {
-                    // disconnect the target socket
-                    try { target.disconnect(true); } catch (e) { /* ignore */ }
+                    // notify the target first so client can refresh, then disconnect
+                    try {
+                        safeEmit(data.socketId, 'kicked', { reason: 'kicked by admin' });
+                    } catch (e) { /* ignore */ }
+                    setTimeout(() => { try { target.disconnect(true); } catch (e) {} }, 250);
+
                     const log = { timestamp: new Date().toISOString(), event: 'admin_kick', socketId: data.socketId, admin: true };
                     adminLogs.push(log);
                     adminBroadcast({ type: 'log', payload: log });
