@@ -49,14 +49,74 @@ function safeEmit(to, event, payload) {
     }
 }
 
-// Try to load the admin panel logger (optional)
-let panel;
-try {
-    panel = require('./panel');
-} catch (e) {
-    // panel is optional; continue without admin logging
-    panel = null;
+// Admin WebSocket server will be attached to the same HTTP server
+const WebSocket = require('ws');
+
+// Admin state: active users and logs
+const adminLogs = [];
+const adminClients = new Set(); // Set of ws
+
+function adminBroadcast(payload) {
+    const data = JSON.stringify(payload);
+    adminClients.forEach((ws) => {
+        if (ws.readyState === WebSocket.OPEN) ws.send(data);
+    });
 }
+
+function getUsersForAdmin() {
+    return Array.from(io.sockets.sockets.values()).map(s => ({
+        socketId: s.id,
+        username: usernames[s.id] || 'Anonymous',
+        ip: (s.handshake && (s.handshake.address || (s.request && s.request.connection && s.request.connection.remoteAddress))) || '',
+        connectedAt: (s.connectedAt) ? new Date(s.connectedAt).toISOString() : ''
+    }));
+}
+
+// Create admin WebSocket server on path /admin-ws (attached to same HTTP server)
+const wss = new WebSocket.Server({ noServer: true });
+
+// Handle upgrade requests for the admin WS path
+server.on('upgrade', (request, socket, head) => {
+    const { url } = request;
+    if (url === '/admin-ws') {
+        wss.handleUpgrade(request, socket, head, (ws) => {
+            wss.emit('connection', ws, request);
+        });
+    } else {
+        socket.destroy();
+    }
+});
+
+// Admin WS connection handling
+wss.on('connection', (ws, req) => {
+    adminClients.add(ws);
+
+    // send initial state
+    ws.send(JSON.stringify({ type: 'init', users: getUsersForAdmin(), logs: adminLogs.slice(-200) }));
+
+    ws.on('message', (msg) => {
+        try {
+            const data = JSON.parse(msg.toString());
+            if (data && data.type === 'kick' && data.socketId) {
+                const target = io.sockets.sockets.get(data.socketId);
+                if (target) {
+                    // disconnect the target socket
+                    try { target.disconnect(true); } catch (e) { /* ignore */ }
+                    const log = { timestamp: new Date().toISOString(), event: 'admin_kick', socketId: data.socketId, admin: true };
+                    adminLogs.push(log);
+                    adminBroadcast({ type: 'log', payload: log });
+                    adminBroadcast({ type: 'update', users: getUsersForAdmin(), newLogs: [log] });
+                } else {
+                    ws.send(JSON.stringify({ type: 'error', message: 'socket not found' }));
+                }
+            }
+        } catch (err) {
+            ws.send(JSON.stringify({ type: 'error', message: 'invalid message' }));
+        }
+    });
+
+    ws.on('close', () => adminClients.delete(ws));
+});
 
 // Set up a connection event listener for new clients
 io.on('connection', (socket) => {
@@ -73,6 +133,7 @@ io.on('connection', (socket) => {
     socket.on('setUsername', (username) => {
         // Store the username associated with the socket ID
         usernames[socket.id] = username || 'Anonymous';
+        socket.connectedAt = Date.now();
 
         // Add the user's socket ID to the list of unpaired users (avoid duplicates)
         if (!users.includes(socket.id)) users.push(socket.id);
@@ -91,14 +152,14 @@ io.on('connection', (socket) => {
             safeEmit(user2, 'matched', { partnerSocketId: user1, partnerUsername: usernames[user1] || 'Anonymous' });
         }
 
-        // Notify admin panel of new connection (if panel available)
+        // Notify admin clients of new connection
         try {
-            if (panel && typeof panel.logConnection === 'function') {
-                const ip = socket.handshake && (socket.handshake.address || (socket.request && socket.request.connection && socket.request.connection.remoteAddress)) || '';
-                panel.logConnection(socket.id, usernames[socket.id], ip);
-            }
+            const ip = (socket.handshake && (socket.handshake.address || (socket.request && socket.request.connection && socket.request.connection.remoteAddress))) || '';
+            const log = { timestamp: new Date().toISOString(), event: 'connect', socketId: socket.id, username: usernames[socket.id], ip };
+            adminLogs.push(log);
+            adminBroadcast({ type: 'update', users: getUsersForAdmin(), newLogs: [log] });
         } catch (err) {
-            console.warn('panel.logConnection failed', err && err.message);
+            console.warn('admin notify connect failed', err && err.message);
         }
     });
 
@@ -107,13 +168,13 @@ io.on('connection', (socket) => {
         // Send the message to the recipient with the sender's username
         safeEmit(to, 'message', { from: usernames[socket.id] || 'Anonymous', message });
 
-        // Log message to admin panel
+        // Log message to admin clients
         try {
-            if (panel && typeof panel.logMessage === 'function') {
-                panel.logMessage(usernames[socket.id] || 'Anonymous', to, message);
-            }
+            const log = { timestamp: new Date().toISOString(), event: 'message', from: usernames[socket.id] || 'Anonymous', to, message: (typeof message === 'string' ? message.substring(0, 200) : '') };
+            adminLogs.push(log);
+            adminBroadcast({ type: 'log', payload: log });
         } catch (err) {
-            console.warn('panel.logMessage failed', err && err.message);
+            console.warn('admin log message failed', err && err.message);
         }
     });
 
@@ -179,13 +240,13 @@ io.on('connection', (socket) => {
         // Log the socket ID of the disconnected user
         console.log(`A user disconnected: ${socket.id}`);
 
-        // Notify admin panel of disconnection
+        // Notify admin clients of disconnection
         try {
-            if (panel && typeof panel.logDisconnection === 'function') {
-                panel.logDisconnection(socket.id);
-            }
+            const log = { timestamp: new Date().toISOString(), event: 'disconnect', socketId: socket.id, username: usernames[socket.id] || 'Anonymous' };
+            adminLogs.push(log);
+            adminBroadcast({ type: 'update', users: getUsersForAdmin(), newLogs: [log] });
         } catch (err) {
-            console.warn('panel.logDisconnection failed', err && err.message);
+            console.warn('admin notify disconnect failed', err && err.message);
         }
     });
 });
